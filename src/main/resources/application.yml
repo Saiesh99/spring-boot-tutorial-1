@@ -1,0 +1,57 @@
+server:
+    port: 8082
+    
+spring:
+    on-profile:
+     active:dev
+    
+---
+
+hi:
+    message: hi bro
+spring:
+    on-profile: dev
+    datasource:
+        driver-class-name: com.mysql.jdbc.Driver
+        password: Msaiesh99@
+        url: jdbc:mysql://localhost:3306/firstDB
+        username: root
+    jpa:
+        hibernate:
+            ddl-auto: update
+        show-sql: true  
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+        
+---
+hi:
+    message: hi bro
+spring:
+    on-profile: qa
+    datasource:
+        driver-class-name: com.mysql.jdbc.Driver
+        password: Msaiesh99@
+        url: jdbc:mysql://localhost:3306/firstDB
+        username: root
+    jpa:
+        hibernate:
+            ddl-auto: update
+        show-sql: true 
+        
+---
+hi:
+    message: hi bro
+spring:
+    on-profile: preprod 
+    datasource:
+        driver-class-name: com.mysql.jdbc.Driver
+        password: Msaiesh99@
+        url: jdbc:mysql://localhost:3306/firstDB
+        username: root
+    jpa:
+        hibernate:
+            ddl-auto: update
+        show-sql: true 
