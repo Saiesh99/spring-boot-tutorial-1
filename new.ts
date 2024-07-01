@@ -1,51 +1,64 @@
-import * as cdk from 'aws-cdk-lib';
-import { Construct } from 'constructs';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as sqs from 'aws-cdk-lib/aws-sqs';
-import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as iam from 'aws-cdk-lib/aws-iam';
-import * as pipes from 'aws-cdk-lib/aws-eventbridge-pipes';
+import * as cdk from '@aws-cdk/core';
+import * as dynamodb from '@aws-cdk/aws-dynamodb';
+import * as lambda from '@aws-cdk/aws-lambda';
+import * as sqs from '@aws-cdk/aws-sqs';
+import * as events from '@aws-cdk/aws-events';
+import * as event_sources from '@aws-cdk/aws-lambda-event-sources';
+import * as eventbridge from '@aws-cdk/aws-eventbridge';
 
-export class EventBridgePipesStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+export class MyCdkProjectStack extends cdk.Stack {
+  constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Create a DynamoDB table
+    // Create DynamoDB table with streams enabled
     const table = new dynamodb.Table(this, 'MyTable', {
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
       stream: dynamodb.StreamViewType.NEW_IMAGE,
+      removalPolicy: cdk.RemovalPolicy.DESTROY, // NOT recommended for production code
     });
 
-    // Create an SQS queue
-    const queue = new sqs.Queue(this, 'MyQueue');
+    // Create SQS queue
+    const queue = new sqs.Queue(this, 'MyQueue', {
+      visibilityTimeout: cdk.Duration.seconds(30),
+    });
 
-    // Create a Lambda function
-    const fn = new lambda.Function(this, 'MyFunction', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+    // Create Lambda function
+    const func = new lambda.Function(this, 'MyFunction', {
+      runtime: lambda.Runtime.NODEJS_14_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        QUEUE_URL: queue.queueUrl,
+      },
     });
 
-    // Grant Lambda permissions to read from the SQS queue
-    queue.grantConsumeMessages(fn);
-    fn.addEventSourceMapping('SQSEventSource', {
-      eventSourceArn: queue.queueArn,
-    });
+    // Grant Lambda permission to read from SQS queue
+    queue.grantConsumeMessages(func);
 
-    // Create IAM role for EventBridge Pipe
+    // Add SQS event source to Lambda
+    func.addEventSource(new event_sources.SqsEventSource(queue));
+
+    // Create EventBridge Pipe to connect DynamoDB Streams to SQS
     const pipeRole = new iam.Role(this, 'PipeRole', {
-      assumedBy: new iam.ServicePrincipal('pipes.amazonaws.com'),
+      assumedBy: new iam.ServicePrincipal('events.amazonaws.com'),
     });
+
     table.grantStreamRead(pipeRole);
     queue.grantSendMessages(pipeRole);
 
-    // Create a pipe
-    new pipes.CfnPipe(this, 'MyPipe', {
+    new eventbridge.CfnPipe(this, 'MyPipe', {
       roleArn: pipeRole.roleArn,
       source: table.tableStreamArn!,
+      sourceParameters: {
+        dynamoDbStreamParameters: {
+          startingPosition: 'LATEST',
+        },
+      },
       target: queue.queueArn,
-      filter: {
-        pattern: '{"eventSource": ["aws:dynamodb"]}',
+      targetParameters: {
+        sqsQueueParameters: {
+          messageGroupId: 'default', // Required for FIFO queues
+        },
       },
     });
   }
